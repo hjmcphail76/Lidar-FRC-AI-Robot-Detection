@@ -7,22 +7,45 @@ import numpy as np
 from sklearn.linear_model import RANSACRegressor, LinearRegression
 
 
-def fit_ransac_line(xs, ys):
-    X = np.array(xs).reshape(-1, 1)
-    Y = np.array(ys)
-    if len(X) < 2:
-        raise ValueError("Need at least 2 points for RANSAC line fitting")
+def find_all_ransac_lines(xs, ys, min_inliers=30, max_lines=2):
+    # Convert to arrays
+    X_all = np.array(xs).reshape(-1, 1)
+    Y_all = np.array(ys)
 
-    ransac = RANSACRegressor(
-        estimator=LinearRegression(),
-        residual_threshold=0.2,
-        min_samples=2,
-        max_trials=1000,
-    )
-    ransac.fit(X, Y)
-    line_x = np.linspace(X.min(), X.max(), 100).reshape(-1, 1)
-    line_y = ransac.predict(line_x)
-    return line_x, line_y
+    lines = []  # List of (line_x, line_y, inlier_mask)
+
+    for _ in range(max_lines):
+        if len(X_all) < 2:
+            break
+
+        # Fit one RANSAC line
+        ransac = RANSACRegressor(
+            estimator=LinearRegression(),
+            residual_threshold=0.35,
+            min_samples=2,
+            max_trials=50,
+        )
+        ransac.fit(X_all, Y_all)
+
+        inliers = ransac.inlier_mask_
+        num_inliers = inliers.sum()
+
+        # Confidence threshold: reject weak lines
+        if num_inliers < min_inliers:
+            break
+
+        # Build smooth line prediction
+        line_x = np.linspace(X_all.min(), X_all.max(), 200).reshape(-1, 1)
+        line_y = ransac.predict(line_x)
+
+        lines.append((line_x, line_y, inliers))
+
+        # Remove inliers and keep only outliers for next iteration
+        X_all = X_all[~inliers]
+        Y_all = Y_all[~inliers]
+    # if len(lines) > 0:
+    #     print(f"Detected {len(lines)} lines")
+    return lines
 
 
 # Initialize LIDAR
@@ -65,12 +88,22 @@ async def process_queue(queue, stop_event):
 
                     plot.enqueue_points(rev_temp_xs, rev_temp_ys)
                 if angle_deg >= 358.5:
-                    # if len(rev_temp_xs) > 5:
-                    #     try:
-                    #         line_x, line_y = fit_ransac_line(rev_temp_xs, rev_temp_ys)
-                    #         plot.enqueue_points(line_x.flatten(), line_y, is_line=True)
-                    #     except Exception as e:
-                    #         print("RANSAC failed:", e)
+                    if len(rev_temp_xs) > 5:
+                        try:
+                            lines = await asyncio.to_thread(
+                                find_all_ransac_lines,  # multi-line sync function
+                                rev_temp_xs,
+                                rev_temp_ys,
+                            )
+
+                            # Plot each detected line
+                            for line_x, line_y, inliers in lines:
+                                plot.enqueue_points(
+                                    line_x.flatten(), line_y, is_line=True
+                                )
+
+                        except Exception as e:
+                            print("RANSAC failed:", e)
 
                     rev_temp_xs = []
                     rev_temp_ys = []
