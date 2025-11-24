@@ -6,6 +6,8 @@ import plot
 import numpy as np
 from sklearn.linear_model import RANSACRegressor, LinearRegression
 
+import save_data
+
 
 def find_all_ransac_lines(xs, ys, min_inliers=30, max_lines=2):
     # Convert to arrays
@@ -56,20 +58,23 @@ sleep(1)  # Allow time for the device to initialize
 rev_temp_xs = []
 rev_temp_ys = []
 
+rev_temp_angles = []
+rev_temp_distances = []
+
 
 async def process_scan_data():
     try:
         async with asyncio.TaskGroup() as tg:
-            # No wait task needed; just scan and process indefinitely
             tg.create_task(process_queue(lidar.output_queue, lidar.stop_event))
             tg.create_task(lidar.simple_scan(make_return_dict=True))
             tg.create_task(plot.get_start_plot())
+            tg.create_task(save_data.get_start_data_collection())
     finally:
         lidar.reset()
 
 
 async def process_queue(queue, stop_event):
-    global rev_temp_xs, rev_temp_ys
+    global rev_temp_xs, rev_temp_ys, rev_temp_angles, rev_temp_distances
     while not stop_event.is_set():
         while not queue.empty():
             data = await queue.get()
@@ -77,42 +82,60 @@ async def process_queue(queue, stop_event):
             distance_mm = data["d_mm"]
 
             if distance_mm is not None:
-                if distance_mm < 250:
+                if distance_mm < 200:  # max range
                     angle_rad = math.radians(angle_deg)
                     x = distance_mm * math.cos(angle_rad - math.pi / 2)
                     y = distance_mm * math.sin(angle_rad - math.pi / 2)
-                    rev_temp_xs.append(x)
+
+                    rev_temp_xs.append(x)  # converted to cartesian
                     rev_temp_ys.append(y)
+
+                    rev_temp_angles.append(angle_deg)
+                    rev_temp_distances.append(distance_mm)
 
                     # print(rev_temp_xs[-1], rev_temp_ys[-1]) debugging
 
+                    # cartesian points for plotting
                     plot.enqueue_points(rev_temp_xs, rev_temp_ys)
+
+                    # polar points for saving images
+
                 if angle_deg >= 358.5:
-                    if len(rev_temp_xs) > 5:
-                        try:
-                            lines = await asyncio.to_thread(
-                                find_all_ransac_lines,  # multi-line sync function
-                                rev_temp_xs,
-                                rev_temp_ys,
-                            )
+                    # if len(rev_temp_xs) > 5:
+                    #     try:
+                    #         lines = await asyncio.to_thread(
+                    #             find_all_ransac_lines,  # multi-line sync function
+                    #             rev_temp_xs,
+                    #             rev_temp_ys,
+                    #         )
 
-                            # Plot each detected line
-                            for line_x, line_y, inliers in lines:
-                                plot.enqueue_points(
-                                    line_x.flatten(), line_y, is_line=True
-                                )
+                    #         # Plot each detected line
+                    #         for line_x, line_y, inliers in lines:
+                    #             plot.enqueue_points(
+                    #                 line_x.flatten(), line_y, is_line=True
+                    #             )
 
-                        except Exception as e:
-                            print("RANSAC failed:", e)
+                    #     except Exception as e:
+                    #         print("RANSAC failed:", e)
 
+                    # Save polar data for AI model training
+                    if len(rev_temp_angles) > 5:
+                        save_data.enqueue_points(
+                            list(rev_temp_angles), list(rev_temp_distances))
+
+                        # reset for next revolution
                     rev_temp_xs = []
                     rev_temp_ys = []
+
+                    rev_temp_angles = []
+                    rev_temp_distances = []
 
         await asyncio.sleep(0.01)
 
 
 try:
     asyncio.run(process_scan_data())
+
 except KeyboardInterrupt:
     print("Scan interrupted... WHY??? 😂")
     lidar.reset()

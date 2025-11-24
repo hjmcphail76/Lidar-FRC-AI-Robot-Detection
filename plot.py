@@ -66,6 +66,7 @@ async def run_plot():
 
             # Draw latest RANSAC line
             if line_batches:
+
                 xs, ys = line_batches[-1]
                 for i in range(len(xs) - 1):
                     pygame.draw.line(
@@ -79,7 +80,7 @@ async def run_plot():
             pygame.display.flip()
             redraw_needed = False
 
-        clock.tick(30)  # limit to 30 FPS max to keep CPU low
+        clock.tick(30)
         await asyncio.sleep(0.01)
 
 
