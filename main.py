@@ -93,12 +93,8 @@ async def process_queue(queue, stop_event):
                     rev_temp_angles.append(angle_deg)
                     rev_temp_distances.append(distance_mm)
 
-                    # print(rev_temp_xs[-1], rev_temp_ys[-1]) debugging
-
-                    # cartesian points for plotting
+                    # send as we get them, not just at end of rev
                     plot.enqueue_points(rev_temp_xs, rev_temp_ys)
-
-                    # polar points for saving images
 
                 if angle_deg >= 358.5:
                     # if len(rev_temp_xs) > 5:
@@ -119,9 +115,10 @@ async def process_queue(queue, stop_event):
                     #         print("RANSAC failed:", e)
 
                     # Save polar data for AI model training
-                    if len(rev_temp_angles) > 5:
+
+                    if len(rev_temp_xs) > 5:
                         save_data.enqueue_points(
-                            list(rev_temp_angles), list(rev_temp_distances))
+                            list(rev_temp_xs), list(rev_temp_ys))
 
                         # reset for next revolution
                     rev_temp_xs = []
