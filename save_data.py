@@ -12,7 +12,7 @@ def enqueue_points(xs, ys):
     point_queue.put_nowait((xs, ys))
 
 
-async def run_save_data():
+async def run_save_data(max_distance=200):
     lidar_batches = []
     dataCount = 0
 
@@ -29,19 +29,21 @@ async def run_save_data():
             ys = latest[1]
 
             print(f"Saving batch {dataCount} with {len(xs)} points")
-            data = lidar_to_image(xs, ys)
+            data = lidar_to_image(xs, ys, max_range=max_distance)
 
             # Convert to PIL format image
             img = Image.fromarray(data)
 
             # Save to disk
+
             img.save(f"photo-output-results/output_image_pil{dataCount}.png")
-            dataCount += 1
+
+            # dataCount += 1
 
         else:
             print("No new data")
 
-        await asyncio.sleep(2)
+        await asyncio.sleep(.05)
 
 
 def lidar_to_image(xs, ys,
@@ -73,6 +75,6 @@ def lidar_to_image(xs, ys,
     return img
 
 
-def get_start_data_collection():
+def get_start_data_collection(max_distance=200):
     """Return the coroutine for use in asyncio.gather."""
-    return run_save_data()
+    return run_save_data(max_distance=max_distance)
