@@ -38,12 +38,12 @@ async def run_save_data(max_distance=200):
 
             img.save(f"photo-output-results/output_image_pil{dataCount}.png")
 
-            # dataCount += 1
+            dataCount += 1
 
         else:
             print("No new data")
 
-        await asyncio.sleep(.05)
+        await asyncio.sleep(2)
 
 
 def lidar_to_image(xs, ys,

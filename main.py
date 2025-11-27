@@ -44,7 +44,7 @@ async def process_queue(queue, stop_event):
             distance_mm = data["d_mm"]
 
             if distance_mm is not None:
-                if distance_mm < max_scan_distance_mm:  # max range
+                if distance_mm < max_scan_distance_mm:
                     angle_rad = math.radians(angle_deg)
                     x = distance_mm * math.cos(angle_rad - math.pi / 2)
                     y = distance_mm * math.sin(angle_rad - math.pi / 2)
