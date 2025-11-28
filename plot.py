@@ -1,89 +1,93 @@
 import pygame
 import asyncio
+import numpy as np
 
 pygame.init()
 
 # Screen dimensions
 WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("LIDAR + RANSAC Plot")
+pygame.display.set_caption("LIDAR Image + YOLO Boxes")
 
 # Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
+GREEN = (0, 200, 0)
 
-# Queue to store batches of points (or lines)
-point_queue = asyncio.Queue()
+# Queues
+image_queue = asyncio.Queue()
+box_queue = asyncio.Queue()
 
 
-def enqueue_points(xs, ys, is_line=False):
-    """Add a new batch of points to the queue."""
-    point_queue.put_nowait((xs, ys, is_line))
+def enqueue_image(image_np):
+    """
+    Push a numpy image into the queue.
+    Expected shape: (H, W, 3), dtype uint8 (RGB)
+    """
+    image_queue.put_nowait(image_np)
+
+
+def enqueue_box(x1, y1, x2, y2):
+    box_queue.put_nowait((x1, y1, x2, y2))
 
 
 async def run_plot():
-    lidar_batches = []  # store recent lidar scans
-    line_batches = []  # store recent fitted lines
+    latest_image_surface = None
+    box_batches = []
+
     running = True
     redraw_needed = False
-
     clock = pygame.time.Clock()
 
     while running:
-        # Handle quit events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
-        # Check for new points (non-blocking)
-        while not point_queue.empty():
-            xs, ys, is_line = await point_queue.get()
-            if is_line:
-                line_batches.append((xs, ys))
-                if len(line_batches) > 10:  # keep memory bounded
-                    line_batches.pop(0)
-            else:
-                lidar_batches.append((xs, ys))
-                if len(lidar_batches) > 3:  # keep only last few revolutions
-                    lidar_batches.pop(0)
-            redraw_needed = True  # only redraw when something changed
+        # Pull image (lidar image from lidar_to_image)
+        while not image_queue.empty():
+            img_np = await image_queue.get()
 
-        # Only redraw if new data arrived
+            # Ensure RGB uint8
+            if img_np.dtype != np.uint8:
+                img_np = img_np.astype(np.uint8)
+
+            # Convert numpy image → pygame surface
+            surface = pygame.surfarray.make_surface(
+                np.transpose(img_np, (1, 0, 2)))
+
+            # Scale to screen
+            surface = pygame.transform.scale(surface, (WIDTH, HEIGHT))
+
+            latest_image_surface = surface
+            redraw_needed = True
+
+        # YOLO boxes
+        while not box_queue.empty():
+            box = await box_queue.get()
+            box_batches.append(box)
+            if len(box_batches) > 10:
+                box_batches.pop(0)
+            redraw_needed = True
+
         if redraw_needed:
-            screen.fill(WHITE)
+            # Draw the lidar image
+            if latest_image_surface is not None:
+                screen.blit(latest_image_surface, (0, 0))
 
-            # Draw latest lidar revolution
-            if lidar_batches:
-                xs, ys = lidar_batches[-1]
-                for i in range(len(xs)):
-                    pygame.draw.circle(
-                        screen,
-                        BLACK,
-                        (int(xs[i] + WIDTH / 2), int(ys[i] + HEIGHT / 2)),
-                        3,
-                    )
-
-            # Draw latest RANSAC line
-            if line_batches:
-
-                xs, ys = line_batches[-1]
-                for i in range(len(xs) - 1):
-                    pygame.draw.line(
-                        screen,
-                        RED,
-                        (int(xs[i] + WIDTH / 2), int(ys[i] + HEIGHT / 2)),
-                        (int(xs[i + 1] + WIDTH / 2), int(ys[i + 1] + HEIGHT / 2)),
-                        2,
-                    )
+            # Draw YOLO boxes on top
+            for (x1, y1, x2, y2) in box_batches:
+                pygame.draw.rect(
+                    screen,
+                    GREEN,
+                    pygame.Rect(x1, y1, x2 - x1, y2 - y1),
+                    2
+                )
 
             pygame.display.flip()
             redraw_needed = False
 
         clock.tick(30)
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
 
 
 def get_start_plot():
-    """Return the coroutine for use in asyncio.gather."""
     return run_plot()

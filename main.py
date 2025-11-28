@@ -1,17 +1,20 @@
+import os
+import shutil
+import cv2
 import math
 from rplidarc1 import RPLidar
 import asyncio
 from time import sleep
 import numpy as np
-from sklearn.linear_model import RANSACRegressor, LinearRegression
+import infrence
 import save_data
-
-# Initialize LIDAR
-lidar = RPLidar("COM4", 460800)
-sleep(1)
+from PIL import Image
+import plot
 
 max_scan_distance_mm = 5000  # 5 meters
-pygame_visualization = False
+
+debug_mode = False
+
 
 # Lists to store LIDAR points
 rev_temp_xs = []
@@ -26,11 +29,11 @@ async def process_scan_data():
         async with asyncio.TaskGroup() as tg:
             tg.create_task(process_queue(lidar.output_queue, lidar.stop_event))
             tg.create_task(lidar.simple_scan(make_return_dict=True))
-            if pygame_visualization:
-                import plot
-                tg.create_task(plot.get_start_plot())
+
+            tg.create_task(plot.get_start_plot())
             tg.create_task(save_data.get_start_data_collection(
-                max_scan_distance_mm))
+                debugging=debug_mode))
+            tg.create_task(infrence.get_start_data_collection())
     finally:
         lidar.reset()
 
@@ -55,33 +58,28 @@ async def process_queue(queue, stop_event):
                     rev_temp_angles.append(angle_deg)
                     rev_temp_distances.append(distance_mm)
 
-                if angle_deg >= 358.5:  # every time a revolution completes
-                    # if len(rev_temp_xs) > 5:
-                    #     try:
-                    #         lines = await asyncio.to_thread(
-                    #             find_all_ransac_lines,  # multi-line sync function
-                    #             rev_temp_xs,
-                    #             rev_temp_ys,
-                    #         )
-
-                    #         # Plot each detected line
-                    #         for line_x, line_y, inliers in lines:
-                    #             plot.enqueue_points(
-                    #                 line_x.flatten(), line_y, is_line=True
-                    #             )
-
-                    #     except Exception as e:
-                    #         print("RANSAC failed:", e)
-
-                    # Save polar data for AI model training
+                if angle_deg >= 358.5:
 
                     if len(rev_temp_xs) > 5:
-                        save_data.enqueue_points(
-                            list(rev_temp_xs), list(rev_temp_ys))
-                        if pygame_visualization:
-                            plot.enqueue_points(rev_temp_xs, rev_temp_ys)
 
-                        # reset for next revolution
+                        img = lidar_to_image(
+                            rev_temp_xs,
+                            rev_temp_ys,
+                            img_width=360,
+                            img_height=256,
+                            max_range=max_scan_distance_mm,
+                        )
+
+                        save_data.enqueue_images(Image.fromarray(img))
+
+                        infrence.enqueue_image(img)
+
+                        # results = infrence.make_inference(
+                        #     img)  # returns Result object
+
+                        plot.enqueue_image(img)
+
+                    # reset for next revolution
                     rev_temp_xs = []
                     rev_temp_ys = []
 
@@ -91,50 +89,53 @@ async def process_queue(queue, stop_event):
         await asyncio.sleep(0.01)
 
 
-def find_all_ransac_lines(xs, ys, min_inliers=30, max_lines=2):
-    # Convert to arrays
-    X_all = np.array(xs).reshape(-1, 1)
-    Y_all = np.array(ys)
+def lidar_to_image(xs, ys,
+                   img_width=360, img_height=256, max_range=200):
 
-    lines = []  # List of (line_x, line_y, inlier_mask)
+    img = np.zeros((img_height, img_width), dtype=np.uint8)
 
-    for _ in range(max_lines):
-        if len(X_all) < 2:
-            break
+    x = np.array(xs).flatten()
+    y = np.array(ys).flatten()
 
-        # Fit one RANSAC line
-        ransac = RANSACRegressor(
-            estimator=LinearRegression(),
-            residual_threshold=0.35,
-            min_samples=2,
-            max_trials=50,
-        )
-        ransac.fit(X_all, Y_all)
+    x_min, x_max = -max_range, max_range
 
-        inliers = ransac.inlier_mask_
-        num_inliers = inliers.sum()
+    # invert Y for image coordinates by swapping +/- for y min/max
+    y_min, y_max = max_range, -max_range
 
-        # Confidence threshold: reject weak lines
-        if num_inliers < min_inliers:
-            break
+    # Map XY to image coordinates
+    cols = ((x - x_min) / (x_max - x_min) * (img_width - 1)).astype(int)
+    rows = ((y_max - y) / (y_max - y_min) * (img_height - 1)).astype(int)
 
-        # Build smooth line prediction
-        line_x = np.linspace(X_all.min(), X_all.max(), 200).reshape(-1, 1)
-        line_y = ransac.predict(line_x)
+    # Clamp indices
+    cols = np.clip(cols, 0, img_width - 1)
+    rows = np.clip(rows, 0, img_height - 1)
 
-        lines.append((line_x, line_y, inliers))
+    # Draw points as white on the black background
+    img[rows, cols] = 255
 
-        # Remove inliers and keep only outliers for next iteration
-        X_all = X_all[~inliers]
-        Y_all = Y_all[~inliers]
-    # if len(lines) > 0:
-    #     print(f"Detected {len(lines)} lines")
-    return lines
+    # img[img_height//2, img_width//2] = 128 #marks center as sensor position
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+
+    return img_rgb
 
 
 try:
-    asyncio.run(process_scan_data())
+    # Initialize LIDAR
+    lidar = RPLidar("COM4", 460800)
+    sleep(1)
 
+    folder = "photo-output-results"
+
+    # Delete everything *inside* the folder
+    for name in os.listdir(folder):
+        path = os.path.join(folder, name)
+
+        if os.path.isfile(path) or os.path.islink(path):
+            os.remove(path)
+        else:
+            shutil.rmtree(path)
+
+    asyncio.run(process_scan_data())
 except KeyboardInterrupt:
     print("Scan interrupted... WHY??? 😂")
     lidar.reset()
