@@ -10,6 +10,7 @@ import infrence
 import save_data
 from PIL import Image
 import plot
+import nt_interface
 
 max_scan_distance_mm = 5000  # OG 5 meters
 
@@ -27,10 +28,10 @@ async def process_scan_data():
         async with asyncio.TaskGroup() as tg:
             tg.create_task(process_queue(lidar.output_queue, lidar.stop_event))
             tg.create_task(lidar.simple_scan(make_return_dict=True))
-
             tg.create_task(plot.get_start_plot())
             tg.create_task(save_data.get_start_data_collection())
             tg.create_task(infrence.get_start_data_collection())
+            tg.create_task(nt_interface.start_nt_publisher())
     finally:
         lidar.reset()
 

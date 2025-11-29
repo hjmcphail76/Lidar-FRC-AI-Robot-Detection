@@ -5,6 +5,7 @@ from ultralytics import YOLO
 from PIL import Image
 import os
 import plot
+import nt_interface
 
 # Load your trained YOLOv8 weights
 model = YOLO('best.pt')
@@ -36,6 +37,12 @@ def make_inference(img):
     sy2 = y2 * (screen_h / img_h)
 
     plot.enqueue_box(sx1, sy1, sx2, sy2)
+
+    nt_interface.publish_pose(
+        (x1 + x2) / 2 / 1000,  # convert to meters
+        (y1 + y2) / 2 / 1000,
+        0
+    )
 
     return results
 
