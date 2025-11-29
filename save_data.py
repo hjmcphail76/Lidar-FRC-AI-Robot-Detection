@@ -4,7 +4,6 @@ import numpy as np
 import os
 import infrence
 
-# Queue to store batches of points NOT lines here
 image_queue = asyncio.Queue()
 
 
@@ -13,7 +12,7 @@ def enqueue_images(img):
     image_queue.put_nowait(img)
 
 
-async def run_save_data(debugging=False):
+async def run_save_data():
     dataCount = 0
 
     while True:
@@ -27,17 +26,15 @@ async def run_save_data(debugging=False):
             latest.save(
                 f"photo-output-results/output_image_pil{dataCount}.png")
 
-            if not debugging:
-                dataCount += 1
+            dataCount += 1
 
         else:
-            print("No new data")
-        if not debugging:
-            await asyncio.sleep(2)  # save data cycle delay
-        else:
-            await asyncio.sleep(0.05)
+            # print("No new data")
+            pass
+
+        await asyncio.sleep(2)  # save data cycle delay
 
 
-def get_start_data_collection(debugging=False):
+def get_start_data_collection():
     """Return the coroutine for use in asyncio.gather."""
-    return run_save_data(debugging=debugging)
+    return run_save_data()

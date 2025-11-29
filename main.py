@@ -11,9 +11,7 @@ import save_data
 from PIL import Image
 import plot
 
-max_scan_distance_mm = 5000  # 5 meters
-
-debug_mode = False
+max_scan_distance_mm = 5000  # OG 5 meters
 
 
 # Lists to store LIDAR points
@@ -31,8 +29,7 @@ async def process_scan_data():
             tg.create_task(lidar.simple_scan(make_return_dict=True))
 
             tg.create_task(plot.get_start_plot())
-            tg.create_task(save_data.get_start_data_collection(
-                debugging=debug_mode))
+            tg.create_task(save_data.get_start_data_collection())
             tg.create_task(infrence.get_start_data_collection())
     finally:
         lidar.reset()
@@ -73,9 +70,6 @@ async def process_queue(queue, stop_event):
                         save_data.enqueue_images(Image.fromarray(img))
 
                         infrence.enqueue_image(img)
-
-                        # results = infrence.make_inference(
-                        #     img)  # returns Result object
 
                         plot.enqueue_image(img)
 
@@ -137,7 +131,7 @@ try:
 
     asyncio.run(process_scan_data())
 except KeyboardInterrupt:
-    print("Scan interrupted... WHY??? 😂")
+    print("Scan interrupted... WHY?!?!? 😂")
     lidar.reset()
 finally:
     lidar.reset()

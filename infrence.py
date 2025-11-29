@@ -16,7 +16,7 @@ model = YOLO('best.pt')
 
 
 def make_inference(img):
-    results = model.predict(img, conf=0.02, verbose=False)[0]
+    results = model.predict(img, conf=.5, verbose=False)[0]
 
     img_h, img_w = img.shape[:2]
 
@@ -24,16 +24,18 @@ def make_inference(img):
     screen_w = 800
     screen_h = 600
 
-    for box in results.boxes:
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
+    # for box in results.boxes:
+    if len(results.boxes) == 0:
+        return results
+    x1, y1, x2, y2 = results.boxes[0].xyxy[0].tolist()
 
-        # SCALE YOLO coordinates from image-size → screen-size
-        sx1 = x1 * (screen_w / img_w)
-        sx2 = x2 * (screen_w / img_w)
-        sy1 = y1 * (screen_h / img_h)
-        sy2 = y2 * (screen_h / img_h)
+    # SCALE YOLO coordinates from image-size → screen-size
+    sx1 = x1 * (screen_w / img_w)
+    sx2 = x2 * (screen_w / img_w)
+    sy1 = y1 * (screen_h / img_h)
+    sy2 = y2 * (screen_h / img_h)
 
-        plot.enqueue_box(sx1, sy1, sx2, sy2)
+    plot.enqueue_box(sx1, sy1, sx2, sy2)
 
     return results
 
@@ -59,11 +61,9 @@ async def run_inference_detector():
             if results is None:
                 return
 
-            results.save(
-                "predictions/live_prediction.png")
+            # results.save(
+            #     "predictions/live_prediction.png")
 
-        # else:
-        #     print("No new data")
         await asyncio.sleep(0.1)
 
 

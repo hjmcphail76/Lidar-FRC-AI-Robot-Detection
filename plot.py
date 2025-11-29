@@ -61,10 +61,12 @@ async def run_plot():
             redraw_needed = True
 
         # YOLO boxes
+        if box_queue.empty():
+            redraw_needed = True
         while not box_queue.empty():
             box = await box_queue.get()
             box_batches.append(box)
-            if len(box_batches) > 10:
+            if len(box_batches) > 1:
                 box_batches.pop(0)
             redraw_needed = True
 
