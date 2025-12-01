@@ -10,16 +10,18 @@ scikit-learn==1.7.*
 scipy==1.16.*
 pyserial==3.5
 rplidarc1==0.1.*
-pyntcore==2025.3.*
-robotpy-wpimath==2025.3.*
-robotpy-wpiutil==2025.3.*
-robotpy-wpinet==2025.3.*
-robotpy-native-ntcore==2025.3.*
-robotpy-native-wpimath==2025.3.*
-robotpy-native-wpiutil==2025.3.*
-robotpy-native-wpinet==2025.3.*
 requests==2.32.*
 matplotlib==3.10.*
 networkx==3.6
 PyYAML==6.0.*
 typing_extensions==4.15.*
+
+# RobotPy packages (Python 3.11 compatible)
+pyntcore==2023.4.3.*
+robotpy-wpimath==2023.4.3.*
+robotpy-wpiutil==2023.4.3.*
+robotpy-wpinet==2023.4.3.*
+robotpy-native-ntcore==2023.4.3.*
+robotpy-native-wpimath==2023.4.3.*
+robotpy-native-wpiutil==2023.4.3.*
+robotpy-native-wpinet==2023.4.3.*
