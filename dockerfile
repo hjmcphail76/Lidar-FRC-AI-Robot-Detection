@@ -1,11 +1,15 @@
-# Use official Python 3.11 slim image
+# Use Python 3.11 slim image
 FROM python:3.11-slim-buster
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for OpenCV, Pygame, etc.
-RUN apt-get update && apt-get install -y \
+# Fix old buster repos if needed
+RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list \
+    && sed -i '/security.debian.org/d' /etc/apt/sources.list
+
+# Install system dependencies for OpenCV, Pygame, and building Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     git \
@@ -19,20 +23,22 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     libxext6 \
     libxrender-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy your application code
-COPY . /app
-
-# Install Python dependencies
+# Upgrade pip and install Python dependencies
+COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose a port if needed (optional)
-EXPOSE 80
+# Copy your app code
+COPY . /app
 
-# Environment variables
+# Optional: expose a port only if your app uses HTTP
+# EXPOSE 80
+
+# Default environment variable
 ENV NAME World
 
-# Run main.py by default
+# Run your main Python script
 CMD ["python", "main.py"]
