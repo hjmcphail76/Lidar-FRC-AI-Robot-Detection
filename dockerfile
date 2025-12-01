@@ -1,20 +1,38 @@
-# Use an official Python runtime as a parent image
+# Use official Python 3.11 slim image
 FROM python:3.11-slim-buster
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
+# Install system dependencies for OpenCV, Pygame, etc.
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    pkg-config \
+    libgl1 \
+    libglib2.0-0 \
+    libsdl2-2.0-0 \
+    libsdl2-image-2.0-0 \
+    libsdl2-mixer-2.0-0 \
+    libsdl2-ttf-2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy your application code
 COPY . /app
 
-# Install any needed packages specified in requirements.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Make port 80 available to the world outside this container
+# Expose a port if needed (optional)
 EXPOSE 80
 
-# Define environment variable
+# Environment variables
 ENV NAME World
 
-# Run app.py when the container launches
+# Run main.py by default
 CMD ["python", "main.py"]
