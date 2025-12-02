@@ -15,8 +15,12 @@ model = YOLO('best.pt')
 # output_dir = 'predictions'
 # os.makedirs(output_dir, exist_ok=True)
 
+max_scan_distance_mm = 0  # default value
+
 
 def make_inference(img):
+    global max_scan_distance_mm
+
     results = model.predict(img, conf=.5, verbose=False)[0]
 
     img_h, img_w = img.shape[:2]
@@ -38,11 +42,13 @@ def make_inference(img):
 
     plot.enqueue_box(sx1, sy1, sx2, sy2)
 
-    nt_interface.publish_pose(
-        (x1 + x2) / 2 / 1000,  # convert to meters
-        (y1 + y2) / 2 / 1000,
-        0
-    )
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+
+    x_m = ((cx - img_w/2) / (img_w/2)) * (max_scan_distance_mm / 1000)
+    y_m = ((cy - img_h/2) / (img_h/2)) * (max_scan_distance_mm / 1000)
+
+    nt_interface.publish_pose(x_m, y_m, 0)
 
     return results
 
@@ -71,9 +77,11 @@ async def run_inference_detector():
             # results.save(
             #     "predictions/live_prediction.png")
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
 
 
-def get_start_data_collection():
+def get_start_data_collection(m=0):
     """Return the coroutine for use in asyncio.gather."""
+    global max_scan_distance_mm
+    max_scan_distance_mm = m
     return run_inference_detector()

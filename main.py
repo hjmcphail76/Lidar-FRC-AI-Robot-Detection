@@ -12,7 +12,7 @@ from PIL import Image
 import plot
 import nt_interface
 
-max_scan_distance_mm = 5000  # OG 5 meters
+max_scan_distance_mm = 5000
 
 
 # Lists to store LIDAR points
@@ -30,7 +30,8 @@ async def process_scan_data():
             tg.create_task(lidar.simple_scan(make_return_dict=True))
             tg.create_task(plot.get_start_plot())
             tg.create_task(save_data.get_start_data_collection())
-            tg.create_task(infrence.get_start_data_collection())
+            tg.create_task(infrence.get_start_data_collection(
+                max_scan_distance_mm))
             tg.create_task(nt_interface.start_nt_publisher())
     finally:
         lidar.reset()
@@ -67,7 +68,6 @@ async def process_queue(queue, stop_event):
                             img_height=256,
                             max_range=max_scan_distance_mm,
                         )
-
                         save_data.enqueue_images(Image.fromarray(img))
 
                         infrence.enqueue_image(img)
