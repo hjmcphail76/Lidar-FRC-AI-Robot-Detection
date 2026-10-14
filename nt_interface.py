@@ -26,12 +26,15 @@ def nt_publisher_thread():
         pose_pub.set(pose_list_copy)
         inst.flush()
         time.sleep(0.02)  # 50 Hz
+    pass
+        
 
 
 def publish_pose(x, y, angle_deg):
     """Thread-safe update of the single pose."""
     with pose_lock:
         shared_poses[0] = Pose2d(x, -y, Rotation2d.fromDegrees(angle_deg))
+    pass
 
 
 async def start_nt_publisher():
@@ -44,3 +47,4 @@ async def start_nt_publisher():
 
     # Run thread starter in a background OS thread
     await asyncio.to_thread(starter)
+    pass
