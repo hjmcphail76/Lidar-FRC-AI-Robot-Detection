@@ -17,9 +17,12 @@ LIDAR_BAUDRATE = 460800
 
 MAX_SCAN_DISTANCE_MM = 5000
 
-CLUSTER_EPS_MM = 120
-CLUSTER_MIN_POINTS = 4
-MIN_TARGET_POINTS = 5
+MIN_SCAN_ANGLE_DEG = 0
+MAX_SCAN_ANGLE_DEG = 360
+
+CLUSTER_EPS_MM = 100
+CLUSTER_MIN_POINTS = 5
+MIN_TARGET_POINTS = 10
 
 IMAGE_WIDTH = 360
 IMAGE_HEIGHT = 256
@@ -28,7 +31,6 @@ QUEUE_POLL_INTERVAL = 0.001
 
 # Keep only the newest scan waiting for clustering.
 scan_queue = asyncio.Queue(maxsize=1)
-
 
 # ============================================================
 # LIDAR TARGET CLUSTERING
@@ -176,12 +178,8 @@ async def clustering_algorithm_worker():
             # Publish the newest available target set to Pygame.
             plot.enqueue_targets(targets)
             
-            for target in targets:
-                nt_interface.publish_pose(
-                    target["center_x"],
-                    target["center_y"],
-                    0.0,  # Placeholder for angle
-                )
+            
+            nt_interface.publish_poses(targets)
 
             print(
                 f"Clustering: {elapsed_ms:.1f} ms | "
@@ -241,24 +239,30 @@ async def process_queue(queue, stop_event):
 
             angle_deg = data["a_deg"]
             distance_mm = data["d_mm"]
+            
+            
+            
+            
+            if (angle_deg > MIN_SCAN_ANGLE_DEG) and (angle_deg < MAX_SCAN_ANGLE_DEG):
 
-            # Retain only valid returns within the maximum range.
-            if distance_mm is not None and 0 < distance_mm < MAX_SCAN_DISTANCE_MM:
-                angle_rad = math.radians(angle_deg)
+                # Retain only valid returns within the maximum range.
+                if distance_mm is not None and 0 < distance_mm < MAX_SCAN_DISTANCE_MM:
+                    angle_rad = math.radians(angle_deg)
+                    
 
-                x = distance_mm * math.cos(
-                    angle_rad - math.pi / 2
-                )
+                    x = distance_mm * math.cos(
+                        angle_rad - math.pi / 2
+                    )
 
-                y = distance_mm * math.sin(
-                    angle_rad - math.pi / 2
-                )
+                    y = distance_mm * math.sin(
+                        angle_rad - math.pi / 2
+                    )
 
-                rev_temp_xs.append(x)
-                rev_temp_ys.append(y)
+                    rev_temp_xs.append(x)
+                    rev_temp_ys.append(y)
 
-                rev_temp_angles.append(angle_deg)
-                rev_temp_distances.append(distance_mm)
+                    rev_temp_angles.append(angle_deg)
+                    rev_temp_distances.append(distance_mm)
 
             # End of revolution.
             if angle_deg >= 358:
