@@ -1,6 +1,6 @@
 import asyncio
 import threading
-from ntcore import NetworkTableInstance, PubSubOptions
+import ntcore
 
 _inst = None
 _pose_pub = None
@@ -13,23 +13,33 @@ def _init():
     with _lock:
         if _pose_pub is not None:
             return
-        _inst = NetworkTableInstance.getDefault()
+        _inst = ntcore.NetworkTableInstance.getDefault()
         _inst.startClient4("LidarProcessorClient")
         _inst.setServer("127.0.0.1")  # or robot IP
 
         table = _inst.getTable("LidarProcessor")
         _pose_pub = table.getDoubleArrayTopic("poses").publish(
-            PubSubOptions(keepDuplicates=True))
+            ntcore.PubSubOptions(keepDuplicates=True))
 
 
 def publish_poses(targets):
     """
     Publish the current targets as a flat [x, y, rotation_rad, ...] array.
     Call once per scan. An empty `targets` publishes an empty array, which clears the list.
+    
+    Structure of the published array:
+    [timestamp, x1, y1, rotation1, x2, y2, rotation2, ...]
+    where:
+        - timestamp: float, seconds since epoch
+        - x: float, meters (forward)
+        - y: float, meters (left)
+        - rotation: float, radians (placeholder for now)
     """
     _init()
 
-    poses = []
+
+
+    poses = [targets[0]["timestamp"]]
     for target in targets:
         poses += [
             -target["center_y"] / 1000.0,   # x (forward), mm -> m
@@ -40,6 +50,8 @@ def publish_poses(targets):
     _pose_pub.set(poses)
     _inst.flush()
 
+def get_nt_timestamp():
+    return ntcore._now()
 
 async def start_nt_publisher():
     """Connects in a worker thread. Can be used directly in an asyncio.TaskGroup."""

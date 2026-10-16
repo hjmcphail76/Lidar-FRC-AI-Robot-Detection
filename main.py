@@ -79,8 +79,8 @@ def find_lidar_targets(xs, ys):
 
             "width_mm": float(x_max - x_min),
             "height_mm": float(y_max - y_min),
-
-            "bbox_mm": (
+            "timestamp": nt_interface.get_nt_timestamp(),
+            "bbox_mm": ( #Bounding box info in mm, not really used
                 float(x_min),
                 float(y_min),
                 float(x_max),
