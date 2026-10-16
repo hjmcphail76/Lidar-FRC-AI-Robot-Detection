@@ -37,8 +37,6 @@ def publish_poses(targets):
     """
     _init()
 
-
-
     poses = [targets[0]["timestamp"]]
     for target in targets:
         poses += [
@@ -50,8 +48,8 @@ def publish_poses(targets):
     _pose_pub.set(poses)
     _inst.flush()
 
-def get_nt_timestamp():
-    return ntcore._now()
+def get_nt_timestamp_seconds():
+    return ntcore._now()/1e+6
 
 async def start_nt_publisher():
     """Connects in a worker thread. Can be used directly in an asyncio.TaskGroup."""

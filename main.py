@@ -70,9 +70,9 @@ def find_lidar_targets(xs, ys):
         x_min, y_min = cluster.min(axis=0)
         x_max, y_max = cluster.max(axis=0)
         
-        timestamp = nt_interface.get_nt_timestamp() * 1e-6
+        scan_timestamp_seconds = nt_interface.get_nt_timestamp_seconds()
         
-        print(timestamp)
+        print(scan_timestamp_seconds)
         
         targets.append({
             "points": cluster,
@@ -83,7 +83,7 @@ def find_lidar_targets(xs, ys):
 
             "width_mm": float(x_max - x_min),
             "height_mm": float(y_max - y_min),
-            "timestamp": timestamp,
+            "timestamp": scan_timestamp_seconds,
             "bbox_mm": ( #Bounding box info in mm, not really used
                 float(x_min),
                 float(y_min),
