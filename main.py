@@ -69,7 +69,11 @@ def find_lidar_targets(xs, ys):
 
         x_min, y_min = cluster.min(axis=0)
         x_max, y_max = cluster.max(axis=0)
-
+        
+        timestamp = nt_interface.get_nt_timestamp() * 1e-6
+        
+        print(timestamp)
+        
         targets.append({
             "points": cluster,
             "point_count": len(cluster),
@@ -79,7 +83,7 @@ def find_lidar_targets(xs, ys):
 
             "width_mm": float(x_max - x_min),
             "height_mm": float(y_max - y_min),
-            "timestamp": nt_interface.get_nt_timestamp(),
+            "timestamp": timestamp,
             "bbox_mm": ( #Bounding box info in mm, not really used
                 float(x_min),
                 float(y_min),
@@ -87,6 +91,7 @@ def find_lidar_targets(xs, ys):
                 float(y_max),
             ),
         })
+        
 
     return targets
 
@@ -181,11 +186,11 @@ async def clustering_algorithm_worker():
             
             nt_interface.publish_poses(targets)
 
-            print(
-                f"Clustering: {elapsed_ms:.1f} ms | "
-                f"Points: {len(xs)} | "
-                f"Targets: {len(targets)}"
-            )
+            # print(
+            #     f"Clustering: {elapsed_ms:.1f} ms | "
+            #     f"Points: {len(xs)} | "
+            #     f"Targets: {len(targets)}"
+            # )
 
         except Exception as exc:
             print(f"Target clustering error: {exc}")
