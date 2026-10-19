@@ -49,7 +49,10 @@ def publish_poses(targets):
     _inst.flush()
 
 def get_nt_timestamp_seconds():
-    return ntcore._now()/1e+6
+    _init()
+    offset = _inst.getServerTimeOffset()  # Optional, microseconds; None if not connected
+    now_server_us = ntcore._now() + (offset or 0)
+    return now_server_us / 1e6
 
 async def start_nt_publisher():
     """Connects in a worker thread. Can be used directly in an asyncio.TaskGroup."""

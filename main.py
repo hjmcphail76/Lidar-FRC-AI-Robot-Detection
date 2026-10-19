@@ -15,7 +15,7 @@ import nt_interface
 LIDAR_PORT = "COM3"
 LIDAR_BAUDRATE = 460800
 
-MAX_SCAN_DISTANCE_MM = 3000
+MAX_SCAN_DISTANCE_MM = 8000
 
 MIN_SCAN_ANGLE_DEG = 0
 MAX_SCAN_ANGLE_DEG = 360
@@ -27,7 +27,7 @@ MIN_TARGET_POINTS = 10
 IMAGE_WIDTH = 360
 IMAGE_HEIGHT = 256
 
-QUEUE_POLL_INTERVAL = 0.001
+QUEUE_POLL_INTERVAL = 0.0005
 
 # Keep only the newest scan waiting for clustering.
 scan_queue = asyncio.Queue(maxsize=1)
