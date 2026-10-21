@@ -1,7 +1,8 @@
-
-import pygame
 import asyncio
+import threading
+
 import numpy as np
+import pygame
 
 pygame.init()
 
@@ -16,33 +17,40 @@ WHITE = (255, 255, 255)
 CYAN = (0, 220, 255)
 BLACK = (0, 0, 0)
 
-# Match your LIDAR configuration
-MAX_RANGE_MM = 5000
+# Must match MAX_SCAN_DISTANCE_MM in main.py (main.py overwrites this at import).
+MAX_RANGE_MM = 8000
 
-# Queues
-image_queue = asyncio.Queue()
-box_queue = asyncio.Queue()
-target_queue = asyncio.Queue()
+# Latest-value handoff. Only the newest item of each kind is ever drawn, so a
+# lock-protected slot replaces the unbounded asyncio queues. It is also safe to
+# call the enqueue_* functions from any thread.
+_lock = threading.Lock()
+_latest_image = None
+_latest_targets = None  # None = nothing new; an empty list is a real update
+_latest_box = None
 
 
 def enqueue_image(image_np):
     """
-    Push a numpy image into the queue.
+    Publish the newest numpy image, replacing any image not yet drawn.
     Expected shape: (H, W, 3), dtype uint8, RGB.
     """
-    image_queue.put_nowait(image_np)
+    global _latest_image
+    with _lock:
+        _latest_image = image_np
 
 
 def enqueue_box(x1, y1, x2, y2):
     """
     Legacy YOLO box in screen pixel coordinates.
     """
-    box_queue.put_nowait((x1, y1, x2, y2))
+    global _latest_box
+    with _lock:
+        _latest_box = (x1, y1, x2, y2)
 
 
 def enqueue_targets(targets):
     """
-    Push targets returned by find_lidar_targets().
+    Publish targets returned by find_lidar_targets().
 
     Each target contains:
         points: Nx2 array of (x, y) in mm
@@ -51,7 +59,20 @@ def enqueue_targets(targets):
         width_mm, height_mm: bounding dimensions
         bbox_mm: (x_min, y_min, x_max, y_max)
     """
-    target_queue.put_nowait(targets)
+    global _latest_targets
+    with _lock:
+        _latest_targets = targets
+
+
+def _take_updates():
+    """Return (image, targets, box) published since the last call, then clear."""
+    global _latest_image, _latest_targets, _latest_box
+    with _lock:
+        updates = (_latest_image, _latest_targets, _latest_box)
+        _latest_image = None
+        _latest_targets = None
+        _latest_box = None
+    return updates
 
 
 def world_to_screen(x, y):
@@ -162,10 +183,10 @@ async def run_plot():
             if event.type == pygame.QUIT:
                 running = False
 
-        # Get the latest LIDAR image
-        while not image_queue.empty():
-            img_np = await image_queue.get()
+        img_np, new_targets, new_box = _take_updates()
 
+        # Newest LIDAR image
+        if img_np is not None:
             if img_np.dtype != np.uint8:
                 img_np = img_np.astype(np.uint8)
 
@@ -177,17 +198,13 @@ async def run_plot():
                 surface, (WIDTH, HEIGHT)
             )
 
-        # Get the latest DBSCAN target groupings
-        while not target_queue.empty():
-            latest_targets = await target_queue.get()
+        # Newest DBSCAN target groupings (an empty list clears the overlay)
+        if new_targets is not None:
+            latest_targets = new_targets
 
-        # Get latest YOLO boxes
-        while not box_queue.empty():
-            latest_boxes.append(await box_queue.get())
-
-            # Preserve the existing single-box behavior
-            if len(latest_boxes) > 1:
-                latest_boxes.pop(0)
+        # Newest YOLO box (single-box behavior preserved)
+        if new_box is not None:
+            latest_boxes = [new_box]
 
         # Redraw at the display refresh rate
         if latest_image_surface is not None:

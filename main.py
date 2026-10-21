@@ -1,4 +1,3 @@
-
 import asyncio
 import math
 import time
@@ -17,6 +16,9 @@ LIDAR_BAUDRATE = 460800
 
 MAX_SCAN_DISTANCE_MM = 8000
 
+# Keep the Pygame overlay (clusters, boxes) on the same scale as the image.
+plot.MAX_RANGE_MM = MAX_SCAN_DISTANCE_MM
+
 MIN_SCAN_ANGLE_DEG = 0
 MAX_SCAN_ANGLE_DEG = 360
 
@@ -30,6 +32,7 @@ IMAGE_HEIGHT = 256
 QUEUE_POLL_INTERVAL = 0.0005
 
 # Keep only the newest scan waiting for clustering.
+# Items are (xs, ys, timestamp_seconds).
 scan_queue = asyncio.Queue(maxsize=1)
 
 # ============================================================
@@ -69,11 +72,7 @@ def find_lidar_targets(xs, ys):
 
         x_min, y_min = cluster.min(axis=0)
         x_max, y_max = cluster.max(axis=0)
-        
-        scan_timestamp_seconds = nt_interface.get_nt_timestamp_seconds()
-        
-        print(scan_timestamp_seconds)
-        
+
         targets.append({
             "points": cluster,
             "point_count": len(cluster),
@@ -83,15 +82,13 @@ def find_lidar_targets(xs, ys):
 
             "width_mm": float(x_max - x_min),
             "height_mm": float(y_max - y_min),
-            "timestamp": scan_timestamp_seconds,
-            "bbox_mm": ( #Bounding box info in mm, not really used
+            "bbox_mm": (  # Bounding box info in mm, not really used
                 float(x_min),
                 float(y_min),
                 float(x_max),
                 float(y_max),
             ),
         })
-        
 
     return targets
 
@@ -165,7 +162,7 @@ async def clustering_algorithm_worker():
     so processing stays close to real time.
     """
     while True:
-        xs, ys = await scan_queue.get()
+        xs, ys, scan_timestamp = await scan_queue.get()
 
         try:
             start_time = time.perf_counter()
@@ -182,9 +179,10 @@ async def clustering_algorithm_worker():
 
             # Publish the newest available target set to Pygame.
             plot.enqueue_targets(targets)
-            
-            
-            nt_interface.publish_poses(targets)
+
+            # Publish to NetworkTables. An empty target list still publishes
+            # (timestamp only), which clears the previous poses.
+            nt_interface.publish_poses(targets, scan_timestamp)
 
             # print(
             #     f"Clustering: {elapsed_ms:.1f} ms | "
@@ -199,7 +197,7 @@ async def clustering_algorithm_worker():
             scan_queue.task_done()
 
 
-def enqueue_latest_scan(xs, ys):
+def enqueue_latest_scan(xs, ys, timestamp):
     """
     Queue a snapshot of a complete revolution.
 
@@ -214,7 +212,7 @@ def enqueue_latest_scan(xs, ys):
             pass
 
     try:
-        scan_queue.put_nowait((xs.copy(), ys.copy()))
+        scan_queue.put_nowait((xs.copy(), ys.copy(), timestamp))
     except asyncio.QueueFull:
         # A newer scan was queued concurrently.
         pass
@@ -228,8 +226,7 @@ async def process_queue(queue, stop_event):
     rev_temp_xs = []
     rev_temp_ys = []
 
-    rev_temp_angles = []
-    rev_temp_distances = []
+    prev_angle_deg = None
 
     while not stop_event.is_set():
         processed_data = False
@@ -244,16 +241,44 @@ async def process_queue(queue, stop_event):
 
             angle_deg = data["a_deg"]
             distance_mm = data["d_mm"]
-            
-            
-            
-            
-            if (angle_deg > MIN_SCAN_ANGLE_DEG) and (angle_deg < MAX_SCAN_ANGLE_DEG):
+
+            # A revolution ends when the angle wraps around (e.g. 359 -> 1).
+            # Detecting the wrap fires exactly once per revolution, and the
+            # new sample is handled as the first point of the next one.
+            if prev_angle_deg is not None and angle_deg < prev_angle_deg - 180:
+                # Stamp the scan when it completes, not after clustering.
+                scan_timestamp = nt_interface.get_nt_timestamp_seconds()
+
+                # Snapshot this revolution before resetting buffers.
+                xs = rev_temp_xs.copy()
+                ys = rev_temp_ys.copy()
+
+                # Render the image immediately.
+                img = lidar_to_image(
+                    xs,
+                    ys,
+                    img_width=IMAGE_WIDTH,
+                    img_height=IMAGE_HEIGHT,
+                    max_range=MAX_SCAN_DISTANCE_MM,
+                )
+
+                plot.enqueue_image(img)
+
+                # Cluster asynchronously. Sparse or empty scans are queued
+                # too, so previously published targets get cleared.
+                enqueue_latest_scan(xs, ys, scan_timestamp)
+
+                # Reset buffers for the next revolution.
+                rev_temp_xs = []
+                rev_temp_ys = []
+
+            prev_angle_deg = angle_deg
+
+            if MIN_SCAN_ANGLE_DEG <= angle_deg < MAX_SCAN_ANGLE_DEG:
 
                 # Retain only valid returns within the maximum range.
                 if distance_mm is not None and 0 < distance_mm < MAX_SCAN_DISTANCE_MM:
                     angle_rad = math.radians(angle_deg)
-                    
 
                     x = distance_mm * math.cos(
                         angle_rad - math.pi / 2
@@ -265,37 +290,6 @@ async def process_queue(queue, stop_event):
 
                     rev_temp_xs.append(x)
                     rev_temp_ys.append(y)
-
-                    rev_temp_angles.append(angle_deg)
-                    rev_temp_distances.append(distance_mm)
-
-            # End of revolution.
-            if angle_deg >= 358:
-                if len(rev_temp_xs) > 5:
-                    # Snapshot this revolution before resetting buffers.
-                    xs = rev_temp_xs.copy()
-                    ys = rev_temp_ys.copy()
-
-                    # Render the image immediately.
-                    img = lidar_to_image(
-                        xs,
-                        ys,
-                        img_width=IMAGE_WIDTH,
-                        img_height=IMAGE_HEIGHT,
-                        max_range=MAX_SCAN_DISTANCE_MM,
-                    )
-
-                    plot.enqueue_image(img)
-
-                    # Cluster asynchronously.
-                    enqueue_latest_scan(xs, ys)
-
-                # Reset buffers for the next revolution.
-                rev_temp_xs = []
-                rev_temp_ys = []
-
-                rev_temp_angles = []
-                rev_temp_distances = []
 
         if not processed_data:
             await asyncio.sleep(QUEUE_POLL_INTERVAL)
