@@ -7,17 +7,16 @@ import cv2
 import numpy as np
 from rplidarc1 import RPLidar
 from sklearn.cluster import DBSCAN
+import ui
 
-import plot
 import nt_interface
 
 LIDAR_PORT = "COM3"
+
 LIDAR_BAUDRATE = 460800
 
 MAX_SCAN_DISTANCE_MM = 8000
-
-# Keep the Pygame overlay (clusters, boxes) on the same scale as the image.
-plot.MAX_RANGE_MM = MAX_SCAN_DISTANCE_MM
+ui.MAX_RANGE_MM = MAX_SCAN_DISTANCE_MM
 
 MIN_SCAN_ANGLE_DEG = 0
 MAX_SCAN_ANGLE_DEG = 360
@@ -34,6 +33,8 @@ QUEUE_POLL_INTERVAL = 0.0005
 # Keep only the newest scan waiting for clustering.
 # Items are (xs, ys, timestamp_seconds).
 scan_queue = asyncio.Queue(maxsize=1)
+
+lidar_connected = False
 
 # ============================================================
 # LIDAR TARGET CLUSTERING
@@ -178,7 +179,8 @@ async def clustering_algorithm_worker():
             ) * 1000
 
             # Publish the newest available target set to Pygame.
-            plot.enqueue_targets(targets)
+            ui.enqueue_targets(targets)
+            
 
             # Publish to NetworkTables. An empty target list still publishes
             # (timestamp only), which clears the previous poses.
@@ -262,7 +264,7 @@ async def process_queue(queue, stop_event):
                     max_range=MAX_SCAN_DISTANCE_MM,
                 )
 
-                plot.enqueue_image(img)
+                ui.enqueue_image(img)
 
                 # Cluster asynchronously. Sparse or empty scans are queued
                 # too, so previously published targets get cleared.
@@ -314,10 +316,6 @@ async def process_scan_data(lidar):
             )
 
             tg.create_task(
-                plot.get_start_plot()
-            )
-
-            tg.create_task(
                 clustering_algorithm_worker()
             )
 
@@ -328,9 +326,9 @@ async def process_scan_data(lidar):
     finally:
         lidar.reset()
 
-
 def main():
     lidar = None
+    ui.main()
 
     try:
         print(f"Connecting to LIDAR on {LIDAR_PORT}...")
@@ -341,22 +339,19 @@ def main():
         )
 
         sleep(0.25)
+        lidar.healthcheck() #throws exception if not connected and running correctly
 
         print("LIDAR connected. Starting scan processing.")
 
         asyncio.run(process_scan_data(lidar))
-
+    except Exception as e:
+        #should keep attempting to connect
+        lidar_connected = False
+        
     except KeyboardInterrupt:
         print("\nStopping LIDAR processing...")
+    
 
-    finally:
-        if lidar is not None:
-            try:
-                lidar.reset()
-            except Exception:
-                pass
-
-        print("LIDAR stopped.")
 
 
 if __name__ == "__main__":
