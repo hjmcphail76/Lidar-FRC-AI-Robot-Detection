@@ -125,7 +125,7 @@ def main(lidar_processor=None):
     def submit_configuration(lidar_processor):
         port = com_port_input.value.strip()
         if port and port != lidar_processor.get_com_port():
-            lidar_processor.set_com_port(port)
+            lidar_processor.set_port(port)
             ui.notify(f"COM port set to {port}", type="positive", position="top")
         
         ip = nt_ip_input.value.strip()
@@ -165,7 +165,7 @@ def main(lidar_processor=None):
                     .on("keydown.enter", lambda: submit_configuration(lidar_processor))
                 )
                 com_port_input = (
-                    ui.input(label="COM Port", value=lidar_processor.port if lidar_processor else "", placeholder="e.g. COM3")
+                    ui.input(label="Port", value=lidar_processor.port if lidar_processor else "", placeholder="e.g. COM3")
                     .props("outlined dense dark")
                     .classes("w-full")
                     .on("keydown.enter", lambda: submit_configuration(lidar_processor))
