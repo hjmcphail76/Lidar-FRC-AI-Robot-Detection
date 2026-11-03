@@ -7,21 +7,36 @@ _inst = None
 _pose_pub = None
 _lock = threading.Lock()
 
+_is_nt_connected = False
+
+ip_address = "127.0.0.1"
 
 def _init():
     """Connect to NT and create the publisher once. Safe to call repeatedly."""
-    global _inst, _pose_pub
+    global _inst, _pose_pub, is_nt_connected
     with _lock:
         if _pose_pub is not None:
             return
         _inst = ntcore.NetworkTableInstance.getDefault()
         _inst.startClient4("LidarProcessorClient")
-        _inst.setServer("127.0.0.1")  # or robot IP
+        _inst.setServer(ip_address)
 
         table = _inst.getTable("LidarProcessor")
         _pose_pub = table.getDoubleArrayTopic("poses").publish(
             ntcore.PubSubOptions(keepDuplicates=True))
 
+def set_nt_ip(ip):
+    """Set the IP address of the NT server to connect to."""
+    global ip_address
+    ip_address = ip
+    # Reinitialize the connection with the new IP
+    _init()
+
+def get_nt_connected():
+    """Returns True if the NT client is connected to a server."""
+    global _inst
+    _init()
+    return _inst.isConnected()
 
 MERGE_DISTANCE_MM = 1000.0  # targets whose centers are closer than this are merged
 

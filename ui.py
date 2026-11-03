@@ -5,6 +5,8 @@ import cv2
 import numpy as np
 from nicegui import ui
 
+import nt_interface
+
 # Screen/canvas dimensions (SVG overlay coordinate space)
 WIDTH, HEIGHT = 800, 600
 
@@ -22,6 +24,12 @@ REFRESH_HZ = 30
 _lock = threading.Lock()
 _state = {"image": None, "targets": [], "box": None}
 _version = {"image": 0, "targets": 0, "box": 0}
+
+system_status = {
+    "sensor_connected": False,
+    "nt_connected": False,
+    "visualization_active": False,
+}
 
 
 def enqueue_image(image_np):
@@ -62,9 +70,197 @@ def _snapshot(seen):
     return changed
 
 
+
+
+
+# ============================================================
+# GUI
+# ============================================================
+
+
+def set_nt_ip(ip):
+    """Called when the user sets the NetworkTables IP address."""
+    pass  # TODO: implement
+
+
+def main(lidar_processor=None):
+    ui.dark_mode().enable()
+    ui.colors(primary="#3b82f6", positive="#22c55e", negative="#ef4444", warning="#f59e0b")
+    ui.query("body").classes("bg-slate-950")
+
+    CARD = "bg-slate-900 border border-slate-800 rounded-xl shadow-lg p-4 w-full"
+    SECTION = "text-xs font-semibold tracking-widest text-slate-400 uppercase"
+
+    # ---------- Header ----------
+    with ui.header().classes("bg-slate-900 border-b border-slate-800 items-center px-6 py-3"):
+        ui.icon("radar", size="28px").classes("text-primary")
+        ui.label("Lidar Coprocessor").classes("text-xl font-semibold text-white")
+        ui.label("Control Panel").classes("text-xl font-light text-slate-400")
+        ui.space()
+        if lidar_processor is not None:
+            ui.label(f"{lidar_processor.port} @ {lidar_processor.baudrate}").classes(
+                "text-sm font-mono text-slate-400"
+            )
+
+    # ---------- Helpers ----------
+    def status_row(title):
+        """A row with a colored dot, a title, and a right-aligned state label."""
+        with ui.row().classes("w-full items-center no-wrap"):
+            dot = ui.icon("circle", size="12px").props("color=negative")
+            ui.label(title).classes("text-slate-200")
+            ui.space()
+            state = ui.label("Disconnected").classes("text-sm font-medium text-negative")
+        return dot, state
+
+    def set_status(row, connected):
+        dot, state = row
+        dot.props(f"color={'positive' if connected else 'negative'}")
+        state.text = "Connected" if connected else "Disconnected"
+        state.classes(
+            replace="text-sm font-medium "
+            + ("text-positive" if connected else "text-negative")
+        )
+
+    
+    def submit_configuration(lidar_processor):
+        port = com_port_input.value.strip()
+        if port and port != lidar_processor.get_com_port():
+            lidar_processor.set_com_port(port)
+            ui.notify(f"COM port set to {port}", type="positive", position="top")
+        
+        ip = nt_ip_input.value.strip()
+        if ip:
+            set_nt_ip(ip)
+            ui.notify(f"NetworkTables address set to {ip}", type="positive", position="top")
+            
+    def toggle_visualization():
+        active = not system_status["visualization_active"]
+        system_status["visualization_active"] = active
+        if active:
+            toggle_btn.text = "Pause Visualization"
+            toggle_btn.props("icon=pause color=warning")
+        else:
+            toggle_btn.text = "Start Visualization"
+            toggle_btn.props("icon=play_arrow color=primary")
+
+    # ---------- Body ----------
+    with ui.row().classes("w-full no-wrap items-start gap-6 p-6"):
+
+        # Left column: controls
+        with ui.column().classes("gap-4").style("width: 320px; min-width: 320px;"):
+
+            with ui.card().classes(CARD):
+                ui.label("Connections").classes(SECTION)
+                ui.separator().classes("bg-slate-800")
+                sensor_row = status_row("Sensor")
+                nt_row = status_row("NetworkTables")
+
+            with ui.card().classes(CARD):
+                ui.label("NetworkTables").classes(SECTION)
+                ui.separator().classes("bg-slate-800")
+                nt_ip_input = (
+                    ui.input(label="Server IP", value=nt_interface.ip_address, placeholder="e.g. 10.TE.AM.2")
+                    .props("outlined dense dark")
+                    .classes("w-full")
+                    .on("keydown.enter", lambda: submit_configuration(lidar_processor))
+                )
+                com_port_input = (
+                    ui.input(label="COM Port", value=lidar_processor.port if lidar_processor else "", placeholder="e.g. COM3")
+                    .props("outlined dense dark")
+                    .classes("w-full")
+                    .on("keydown.enter", lambda: submit_configuration(lidar_processor))
+                )
+                ui.button("Apply", icon="check", on_click=lambda: submit_configuration(lidar_processor)).props(
+                    "unelevated no-caps"
+                ).classes("w-full")
+
+            with ui.card().classes(CARD):
+                ui.label("Visualization").classes(SECTION)
+                ui.separator().classes("bg-slate-800")
+                toggle_btn = ui.button(
+                    "Start Visualization", icon="play_arrow", on_click=toggle_visualization
+                ).props("unelevated no-caps color=primary").classes("w-full")
+
+            with ui.card().classes(CARD):
+                ui.label("Statistics").classes(SECTION)
+                ui.separator().classes("bg-slate-800")
+                with ui.grid(columns=2).classes("w-full gap-3"):
+                    with ui.column().classes("gap-0"):
+                        ui.label("Targets").classes("text-xs text-slate-400")
+                        target_label = ui.label("0").classes("text-2xl font-mono text-white")
+
+        # Right column: lidar view
+        with ui.column().classes("gap-4").style("flex: 1 1 0; min-width: 0;"):
+            with ui.card().classes(CARD):
+                with ui.row().classes("w-full items-center"):
+                    ui.label("Lidar View").classes(SECTION)
+                    ui.space()
+                    ui.label(f"Range: {MAX_RANGE_MM / 1000:g} m").classes(
+                        "text-xs font-mono text-slate-400"
+                    )
+                view = ui.interactive_image(size=(WIDTH, HEIGHT)).classes(
+                    "w-full rounded-lg bg-black border border-slate-800"
+                )
+                view.props("fit=fill")
+                view.style(
+                    f"max-width: {WIDTH}px; aspect-ratio: {WIDTH} / {HEIGHT}; "
+                    "image-rendering: pixelated;"
+                )
+
+    # ---------- Refresh loop ----------
+    seen = {"image": 0, "targets": 0, "box": 0}
+    drawn = {"targets": "", "box": ""}
+
+    def refresh():
+        if lidar_processor is not None:
+            system_status["nt_connected"] = nt_interface.get_nt_connected()
+            system_status["sensor_connected"] = lidar_processor.is_connected()
+
+            stats = lidar_processor.get_status()
+            target_label.text = str(stats["last_target_count"])
+
+        set_status(sensor_row, system_status["sensor_connected"])
+        set_status(nt_row, system_status["nt_connected"])
+
+        if system_status["visualization_active"]:
+            changed = _snapshot(seen)
+            if not changed:
+                return
+
+            if "image" in changed and changed["image"] is not None:
+                view.set_source(image_to_data_url(changed["image"]))
+            if "targets" in changed:
+                drawn["targets"] = targets_to_svg(changed["targets"])
+            if "box" in changed:
+                drawn["box"] = box_to_svg(changed["box"])
+            if "targets" in changed or "box" in changed:
+                view.content = drawn["targets"] + drawn["box"]
+
+    ui.timer(1 / REFRESH_HZ, refresh)
+
+
+def run_gui(lidar_processor=None):
+    """Build the page and start the web server (blocks; call from the main thread)."""
+
+    @ui.page("/")
+    def index():
+        main(lidar_processor)  # runs per browser client; the processor is shared
+
+    # reload=False: the auto-reloader would re-import this module and
+    # try to open the LIDAR serial port a second time.
+    ui.run(title="FRC Lidar GUI", reload=False)
+
+
+if __name__ in {"__main__", "__mp_main__"}:
+    run_gui()
+
+
+
+
 # ============================================================
 # RENDERING HELPERS
 # ============================================================
+
 
 def world_to_screen(x, y):
     """
@@ -132,77 +328,3 @@ def box_to_svg(box):
         f'<rect x="{int(x1)}" y="{int(y1)}" width="{int(x2 - x1)}" '
         f'height="{int(y2 - y1)}" fill="none" stroke="{WHITE}" stroke-width="2"/>'
     )
-
-
-# ============================================================
-# GUI
-# ============================================================
-
-
-def set_control_callbacks(on_start=None, on_stop=None):
-    global _on_start, _on_stop
-    _on_start, _on_stop = on_start, on_stop
-
-
-def main():
-    ui.label("Lidar Coprocessor Control Panel").classes("text-h4 m-4 font-bold")
-    status_label = ui.label("System Status: Disconnected").classes("text-lg m-4 text-amber-500")
-
-    system_status = {"nt_connected": False, "visualization_active": False}
-
-
-    def toggle_visualization():
-        system_status["nt_connected"] = not system_status["nt_connected"]
-        if system_status["value"]:
-            button.text = "Stop Visualiization"
-            status_label.classes(replace="text-lg m-4 text-green-500")
-            if _on_start:
-                _on_start()
-        else:
-            button.text = "Start Visualization"
-            status_label.classes(replace="text-lg m-4 text-amber-500")
-            if _on_stop:
-                _on_stop()
-
-    button = ui.button("Start Lidar Detection", on_click=toggle_visualization)
-    button.classes("m-4 bg-primary text-white")
-
-    # Lidar view: raster image underneath, SVG overlay (targets + boxes) on top.
-    view = ui.interactive_image(size=(WIDTH, HEIGHT)).classes("m-4 bg-black")
-    view.props("fit=fill")
-    view.style(f"width: {WIDTH}px; height: {HEIGHT}px; image-rendering: pixelated;")
-
-    # Per-client drawing state
-    seen = {"image": 0, "targets": 0, "box": 0}
-    drawn = {"targets": "", "box": ""}
-
-    def refresh():
-        #EA
-        changed = _snapshot(seen)
-        if not changed:
-            return
-
-        if "image" in changed and changed["image"] is not None:
-            view.set_source(image_to_data_url(changed["image"]))
-
-        if "targets" in changed:
-            drawn["targets"] = targets_to_svg(changed["targets"])
-        if "box" in changed:
-            drawn["box"] = box_to_svg(changed["box"])
-
-        if "targets" in changed or "box" in changed:
-            view.content = drawn["targets"] + drawn["box"]
-
-    ui.timer(1 / REFRESH_HZ, refresh)
-
-
-def run_gui():
-    """Build the page and start the web server (blocks; call from the main thread)."""
-    main()
-    # reload=False: the auto-reloader would re-import this module and
-    # try to open the LIDAR serial port a second time.
-    ui.run(title="FRC Lidar GUI", reload=False)
-
-
-if __name__ in {"__main__", "__mp_main__"}:
-    run_gui()
