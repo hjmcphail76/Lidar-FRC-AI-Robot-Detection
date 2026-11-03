@@ -31,6 +31,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Automatically extracts metadata and converts the repository name to lowercase
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/sheriff-scanner
+          tags: |
+            type=raw,value=latest
+
       # Build the image for ARM64 (Orange Pi) and push it
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -38,7 +47,7 @@ jobs:
           context: .
           platforms: linux/arm64 # Target the Orange Pi's architecture explicitly
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/sheriff-scanner:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha # Speeds up subsequent cloud builds drastically
           cache-to: type=gha,mode=max
