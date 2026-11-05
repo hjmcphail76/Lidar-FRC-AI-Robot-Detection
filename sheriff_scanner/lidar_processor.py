@@ -35,7 +35,7 @@ class LidarProcessor(threading.Thread):
 
     def __init__(
         self,
-        port="COM3",
+        port="/dev/ttyUSB0",
         baudrate=460800,
         max_scan_distance_mm=8000,
         min_scan_angle_deg=0,
