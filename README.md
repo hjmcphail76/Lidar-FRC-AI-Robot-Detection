@@ -14,7 +14,7 @@ Install Docker and make sure it starts at boot:
 sudo systemctl enable --now docker
 ```
 
-Find the LIDAR's serial device:
+Find the LIDAR's serial device (Note: the driver comes preinstalled on the Orange Pi 5 Debian Bookworm image):
 
 ```bash
 ls /dev/ttyUSB* /dev/ttyACM*
