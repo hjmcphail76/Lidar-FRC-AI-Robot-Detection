@@ -3,6 +3,7 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [ "main" ] # Runs automatically every time you push code to your main branch
+  workflow_dispatch: # Lets you re-run it manually from the Actions tab
 
 jobs:
   build-and-push:
@@ -40,7 +41,7 @@ jobs:
           tags: |
             type=raw,value=latest
 
-      # Build the image for ARM64 (Orange Pi) and push it
+      # Build the image for ARM64 (Orange Pi) and push it to GHCR
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -51,3 +52,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Same build again (served from cache, so it is fast), exported as a tar file
+      # you can download and load onto the Pi without Docker on your laptop.
+      - name: Export image as tarball
+        uses: docker/build-push-action@v6
+        with:
+          context: ./sheriff_scanner
+          platforms: linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=docker,dest=/tmp/scanner.tar
+          cache-from: type=gha
+
+      - name: Compress tarball
+        run: gzip -f /tmp/scanner.tar
+
+      # Download this from the run's page in the Actions tab (Artifacts section).
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-image
+          path: /tmp/scanner.tar.gz
+          compression-level: 0 # already gzipped
+          retention-days: 14
