@@ -2,20 +2,9 @@
 
 This is where my development progress will be shared for using machine learning and LIDAR to detect other FRC robots during a match. This is one stepping stone to one day having a fully AI-strategised and driven match. It all starts with one thing: robot localization of not just your own robot (that's easy) but everyone around you in high speed matches.
 
-The scanner reads an RPLidar C1, clusters the points into targets with DBSCAN, and publishes their poses to NetworkTables (`LidarProcessor/poses`).
+The scanner reads an [RPLidar C1]([url](https://www.amazon.com/dp/B0DDKZV8HZ?lv=shuf&channelId=500&plpRedirect=mhFallback)), clusters the points into targets with DBSCAN, and publishes their poses to NetworkTables (`LidarProcessor/poses`).
 
-## How deployment works
 
-1. Pushing to `main` triggers the GitHub Action in `.github/workflows/`.
-2. The Action builds an **arm64** Docker image (for the Orange Pi) from `./sheriff_scanner`.
-3. The image is pushed to GitHub Container Registry (GHCR) and also uploaded as a downloadable tarball artifact (`scanner-image`, kept 14 days).
-4. The Orange Pi gets the new image either by pulling it from GHCR (needs internet) or by loading the tarball (no internet needed on the Pi).
-
-Image name:
-
-```
-ghcr.io/hjmcphail76/sheriffscanner/sheriff-scanner:latest
-```
 
 ## One-time setup on the Orange Pi
 
